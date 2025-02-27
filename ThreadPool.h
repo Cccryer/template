@@ -30,7 +30,6 @@ private:
     bool stop;
 };
  
-// the constructor just launches some amount of workers
 
 inline
 ThreadPool::ThreadPool(size_t threads): stop(false){
@@ -66,12 +65,16 @@ auto ThreadPool::enqueue(F&& f, Args&&... args) -> std::future<decltype(f(args..
     //f的返回值类型
     using f_return_type = decltype(f(args...));
 
+    //封装成function
     std::function<f_return_type()> func = std::bind(std::forward<F>(f), std::forward<Args>(args)...); //完美转发
 
+    //packaged_task，使用shared_ptr
     auto task = std::make_shared< std::packaged_task<f_return_type()>>(func);
 
+    //获取future
     std::future<f_return_type> res = task->get_future();
 
+    //加入任务队列
     {
         //限定作用域，提前释放锁
         std::unique_lock<std::mutex> lock(queue_mutex);
@@ -80,14 +83,14 @@ auto ThreadPool::enqueue(F&& f, Args&&... args) -> std::future<decltype(f(args..
             (*task)();
         });
 
+        //唤醒
         condition.notify_one();
     }
-
+    //返回future
     return res;
 }
 
 
-// the destructor joins all threads
 inline ThreadPool::~ThreadPool()
 {
     {
