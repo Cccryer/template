@@ -14,6 +14,8 @@ int binary(vector<int> nums, int target){
     }
     return -1;
 }
+
+
 int binary1(vector<int> nums, int target){
     int l = 0, r = nums.size()-1;
     while(l < r){

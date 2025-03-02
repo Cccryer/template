@@ -13,7 +13,6 @@ void quick_sort(vector<int> &nums, int l, int r){
         if(i<j)
             swap(nums[i], nums[j]);
     }
-
     quick_sort(nums,l,j);
     quick_sort(nums,j+1,r);
 }
