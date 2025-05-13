@@ -1,62 +1,52 @@
-#include<unordered_map>
-#include<ctime>
+#include <unordered_map>
+#include <ctime>
 using namespace std;
-class LRU{
+
+class LRUU{
 
 public:
 
-    LRU(size_t _capacity): capacity(_capacity), size(0), head(nullptr), end(nullptr) {}
-
-    void put(int key, int val, time_t expire_seconds){
+    LRUU(size_t _capacity): capacity(_capacity), size(0), head(nullptr), end(nullptr) {}
+    
+    void put(int key, int val, time_t expire_time){
         time_t cur_time = time(nullptr);
-        
         if(mp.find(key) != mp.end()){
             ListNode *node = mp[key];
             node->val = val;
-            node->expire_time = cur_time + expire_seconds;
+            node->expire_time = cur_time + expire_time;
             moveHead(node);
         }else{
             if(size >= capacity){
-                // ListNode *tmp = end;
-                // if(head == end){
-                //     head = end = nullptr;
-                // }else{
-                //     end->pre->next = nullptr;
-                //     end = end->pre;
-                // }
-                // --size;
-                // mp.erase(tmp->key);
-                // delete tmp;
                 ListNode *p = end;
                 while(p->pre != nullptr){
                     if(p->expire_time <= cur_time)
                         break;
                     p = p->pre;
                 }
+
                 if(p->expire_time <= cur_time){
                     removeNode(p);
                 }else{
                     removeNode(end);
                 }
             }
-
-            ListNode *node = new ListNode(key, val, cur_time+expire_seconds);
+            ListNode *node = new ListNode(key, val, cur_time + expire_time);
             mp[key] = node;
             node->next = head;
-            if(head == nullptr){
+            if(head = nullptr){
                 head = end = node;
             }else{
                 head->pre = node;
                 head = node;
             }
             ++size;
-            
         }
     }
 
     int get(int key){
-        if(mp.find(key) == mp.end())
+        if(mp.find(key) == mp.end()){
             return -1;
+        }
         ListNode *node = mp[key];
         time_t cur_time = time(nullptr);
         if(node->expire_time <= cur_time){
@@ -66,59 +56,24 @@ public:
         moveHead(node);
         return node->val;
     }
-
-
-
-
 private:
-    struct ListNode{
+    
+    struct ListNode
+    {
         int key;
         int val;
         time_t expire_time;
-        ListNode *next;
         ListNode *pre;
+        ListNode *next;
 
-        ListNode(int _key, int _val): key(_key),  next(nullptr), pre(nullptr), val(_val), expire_time(0){}
-        ListNode(int _key, int _val, time_t _expire_time): key(_key), val(_val), next(nullptr), pre(nullptr), expire_time(_expire_time) {} 
+        ListNode(int _key, int _val): key(_key), val(_val), next(nullptr), pre(nullptr), expire_time(0){}
+        ListNode(int _key, int _val, time_t _expire_time): key(_key), val(_val), expire_time(_expire_time), next(nullptr), pre(nullptr){}
     };
-
+    
 private:
-
-    void removeNode(ListNode *node){
-        if(node == nullptr)
-            return;
-        mp.erase(node->key);
-        --size;
-        if(node == head && node == end){
-            head = end = nullptr;
-            delete node;
-            return;
-        }
-
-        if(node == head){
-            node->next->pre = nullptr;
-            head = node->next;
-            delete node;
-            return;
-        }
-
-        if(node == end){
-            node->pre->next = nullptr;
-            end = node->pre;
-            delete node;
-            return;
-        }
-         
-        node->pre->next = node->next;
-        node->next->pre = node->pre;
-
-        delete node;
-    }
-
     void moveHead(ListNode *node){
         if(node == nullptr)
             return;
-
         if(node != head){
             if(node != end){
                 node->pre->next = node->next;
@@ -137,22 +92,51 @@ private:
     void moveTail(ListNode *node){
         if(node == nullptr)
             return;
-
+        
         if(node != end){
             if(node != head){
                 node->pre->next = node->next;
                 node->next->pre = node->pre;
-                
             }else{
                 node->next->pre = nullptr;
                 head = node->next;
             }
-
+            
             node->next = nullptr;
             node->pre = end;
             end->next = node;
             end = node;
         }
+    }
+
+    void removeNode(ListNode *node){
+        if(node == nullptr)
+            return;
+        mp.erase(node->key);
+        --size;
+        if(node == head && node == end){
+            head = end = nullptr;
+            delete node;
+            return;
+        }
+        if(node == head){
+            node->next->pre = nullptr;
+            head = node->next;
+            delete node;
+            return;
+        }
+        if(node == end){
+            node->pre->next = nullptr;
+            end = node->pre;
+            delete node;
+            return;
+        }
+
+        node->pre->next = node->next;
+        node->next->pre = node->pre;
+
+        delete node;
+        return;
     }
 
 private:
@@ -161,4 +145,5 @@ private:
     ListNode *head;
     ListNode *end;
     unordered_map<int, ListNode*> mp;
+
 };

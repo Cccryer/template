@@ -30,6 +30,14 @@ private:
     bool stop;
 };
  
+/*
+    每个线程
+    1. 拿锁
+    2. 条件变量wait
+    3. 检查是否停止
+    4. 取task
+    5. 释放锁并执行task
+*/
 
 inline
 ThreadPool::ThreadPool(size_t threads): stop(false){
@@ -58,7 +66,15 @@ ThreadPool::ThreadPool(size_t threads): stop(false){
     }
 }
 
-// 提交task
+/*
+    1. 封装成无参数function
+    2. 包成packaged_task
+    3. 拿future
+    4. 拿锁
+    5. 包成void() lambda放入task
+    6. 唤醒条件变量
+    6. 返回future
+*/
 template<typename F, typename... Args> 
 auto ThreadPool::enqueue(F&& f, Args&&... args) -> std::future<decltype(f(args...))> //万能引用，函数返回值推断后置
 {
