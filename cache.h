@@ -12,6 +12,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <chrono>
+#include <iostream>
 
 template <typename K, typename V>
 class TTLEvictMultiCache {
@@ -192,6 +193,7 @@ class TTLEvictMultiCache {
 template <typename K, typename V>
 class BaseMultiCache {
  public:
+
     std::size_t Set(const K& key, V&& value) {
         std::lock_guard<std::mutex> lock(mu_);
         const auto& it = map_.find(key);
@@ -203,7 +205,7 @@ class BaseMultiCache {
         return it->second.size();
     }
 
-    std::vector<V> Get(const K& key) {
+    std::vector<V> Get(const K& key) const {
         std::lock_guard<std::mutex> lock(mu_);
         const auto& it = map_.find(key);
         if (it == map_.end()) {
@@ -218,18 +220,17 @@ class BaseMultiCache {
     }
 
  private:
-    std::mutex mu_;
+    mutable std::mutex mu_;
     std::unordered_map<K, std::vector<V>> map_;
 };
 
+// 被动tick，套圈没办法，会少清，写的还复杂没道理的
 template <typename K, typename V>
 class TTLRollingMultiCache {
-
  public:
-
     explicit TTLRollingMultiCache(std::size_t capacity, int64_t ttl_seconds)
-        : capacity_(capacity), ttl_(ttl_seconds), start_tick_(_NowSeconds()), cur_(0), clean_signal_(false), stop_(false) {
-        buckets_.resize(ttl_seconds+1);
+        : capacity_(capacity), ttl_(ttl_seconds), start_tick_(_NowSeconds()), cur_(0),
+            clean_signal_(false), stop_(false), buckets_(ttl_seconds+1) {
         last_tick_ = start_tick_;
 
         clear_thread_ = std::thread([this]() {
@@ -258,13 +259,15 @@ class TTLRollingMultiCache {
 
     std::size_t Set(const K& key, V&& value) {
         _TickIfNeeded();
+        std::cout<<"[Set]: cur: "<< cur_ <<'\n';
         return buckets_[cur_.load(std::memory_order_acquire)].Set(key, std::move(value));
     }
 
-    std::vector<V> Get(const K& key) {
+    std::vector<V> Get(const K& key) const{
         std::vector<V> res;
-        for(const auto& bucket_ : buckets_) {
-            res = bucket_.Get(key);
+        std::size_t cur = cur_.load(std::memory_order_acquire);
+        for (std::size_t i = 0; i < ttl_+1; ++i) {
+            res = buckets_[(cur + ttl_ +1 -i) % ttl_].Get(key);
             if (!res.empty())
                 break;
         }
@@ -282,6 +285,7 @@ class TTLRollingMultiCache {
         
         int64_t now = _NowSeconds();
         int64_t old = last_tick_.load(std::memory_order_acquire);
+        std::cout<<"[Tick]: now: " << now << " old: " <<old <<'\n';
         int64_t elapsed = now - old;
         if (elapsed <= 0) return;
         // in multi thread, now will been update to latest now
@@ -309,4 +313,60 @@ class TTLRollingMultiCache {
     std::condition_variable cond_;
     std::mutex mu_;
 
+};
+
+
+// 主动tick清理
+template <typename K, typename V>
+class TTLRollingMultiCacheV2 {
+public:
+    explicit TTLRollingMultiCacheV2(std::size_t capacity, int64_t ttl_seconds)
+        : capacity_(capacity), ttl_(ttl_seconds), cur_(0),
+          stop_(false), buckets_(ttl_seconds) {
+        if (ttl_seconds <= 0) throw std::invalid_argument("ttl_seconds must be > 0");
+        clear_thread_ = std::thread([this]() {
+            while (!stop_.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                _Tick();
+            }
+        });
+    }
+
+    ~TTLRollingMultiCacheV2() {
+        stop_.store(true, std::memory_order_release);
+        clear_thread_.join();
+    }
+
+    TTLRollingMultiCacheV2(const TTLRollingMultiCacheV2&) = delete;
+    TTLRollingMultiCacheV2& operator=(const TTLRollingMultiCacheV2&) = delete;
+
+    std::size_t Set(const K& key, V&& value) {
+        return buckets_[cur_.load(std::memory_order_acquire)].Set(key, std::move(value));
+    }
+
+    std::vector<V> Get(const K& key) const {
+        std::vector<V> res;
+        std::size_t cur = cur_.load(std::memory_order_acquire);
+        for (std::size_t i = 0; i < ttl_; ++i) {
+            res = buckets_[(cur + ttl_ -i) % ttl_].Get(key);
+            if (!res.empty())
+                break;
+        }
+        return res;
+    }
+
+private:
+    void _Tick() {
+        const std::size_t  new_cur = (cur_.load(std::memory_order_acquire) + 1) % (ttl_);
+        buckets_[new_cur].clear();
+        cur_.store(new_cur, std::memory_order_release);
+    }
+
+private:
+    std::vector<BaseMultiCache<K, V>> buckets_;
+    std::size_t capacity_;
+    int64_t ttl_;
+    std::atomic<std::size_t> cur_;
+    std::thread clear_thread_;
+    std::atomic<bool> stop_;
 };
